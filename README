@@ -1,0 +1,17 @@
+Railsdav (WebDAV for Ruby On Rails)
+===================================
+
+Railsdav is a plugin which allows for custom WebDAV controllers to be added to a Ruby On Rails application to expose functionality as filesystems to WebDAV clients such as Mac OS X Finder, Windows Network Places, Dreamweaver etc.
+
+Railsdav requires the following gems in addition to rails
+
+* unicode (gem install unicode)
+* mimetypes (gem install mime-types)
+
+Railsdav was created by Stuart Eccles (http://www.liverail.net/). I'd like to thank the following people for assisting with Railsdav
+
+*   Albert Ramstedt who contributed bug fixes for a variety of code issues and helped with re-structuring the plugin
+*   Alex MacCaw
+*   Fabien Franzen
+
+
