@@ -42,7 +42,7 @@ module Railsdav
     module InstanceMethods
        
         protected
-   
+       #RFC2518:8.3
        def mkcol_for_path(path)
          begin
            file_path = santized_path(path)
@@ -50,11 +50,10 @@ module Railsdav
            path.match(/(.*)\/.*$/)
            int_path = $1.nil? ? '/' : $1
            unless File.exists?(santized_path(int_path))
-             raise WebDavErrors::TODO409Error
+             raise WebDavErrors::ConflictError
            else
              Dir.mkdir(file_path)
            end
-          
            rescue Errno::ENOENT, Errno::EACCES
              #Forbidden
              raise WebDavErrors::ForbiddenError
@@ -62,8 +61,8 @@ module Railsdav
               #Insufficient Storage
              raise WebDavErrors::InsufficientStorageError
            rescue Errno::EEXIST
-              #Conflict
-             raise WebDavErrors::ConflictError
+              #Not Allowed 
+             raise WebDavErrors::MethodNotAllowedError
          end
        end 
        
@@ -87,7 +86,7 @@ module Railsdav
           dest_path.match(/(.*)\/.*$/)
           int_path = $1.nil? ? '/' : $1
           unless File.exists?(santized_path(int_path))
-            raise WebDavErrors::TODO409Error
+            raise WebDavErrors::ConflictError
           else
             #remove anything existing at the destination path
             remove_existing_dest_path(dest_file_path)
@@ -103,7 +102,7 @@ module Railsdav
           dest_path.match(/(.*)\/.*$/)
           int_path = $1.nil? ? '/' : $1
           unless File.exists?(santized_path(int_path))
-            raise WebDavErrors::TODO409Error
+            raise WebDavErrors::ConflictError
           else
             #remove anything existing at the destination path
             remove_existing_dest_path(dest_file_path)

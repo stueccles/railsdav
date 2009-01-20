@@ -17,7 +17,7 @@ module WebDavErrors
     end
     
     class ConflictError < WebDavErrors::BaseError
-      @@http_status = 405      
+      @@http_status = 409      
       cattr_accessor :http_status
     end
     
@@ -46,7 +46,7 @@ module WebDavErrors
       cattr_accessor :http_status
     end
     
-    class UnknownWebDavMethodError < WebDavErrors::BaseError
+    class MethodNotAllowedError < WebDavErrors::BaseError
       @@http_status = 405
       cattr_accessor :http_status
     end
@@ -55,9 +55,5 @@ module WebDavErrors
       @@http_status = 400
       cattr_accessor :http_status
     end
-    
-    class TODO409Error < WebDavErrors::BaseError
-      @@http_status = 409
-      cattr_accessor :http_status
-    end
+  
 end

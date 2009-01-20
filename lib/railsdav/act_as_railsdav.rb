@@ -1,9 +1,9 @@
-# Copyright (c) 2006 Stuart Eccles
 # Released under the MIT License.  See the LICENSE file for more details.
-
+# Copyright (c) 2006 Stuart Eccles
 # The act_as_railsdav method is attached to ActionController and can be used by calling act_as_railsdav on a controller
-# 
+
 # class MyDavController < ActionController::Base
+# 
 #   act_as_railsdav
 #
 # The controller must then have a route of
@@ -25,10 +25,9 @@
 #
 #
 require 'action_controller'
-require 'unicode'
 module Railsdav
   
-    ACTIONS = %w(lock unlock options propfind proppatch mkcol delete put copy move)
+    METHODS = %w(lock unlock options propfind proppatch mkcol delete put copy move)
     VERSIONS = %w(1 2)
 
     def self.append_features(base)
@@ -39,20 +38,23 @@ module Railsdav
     module ClassMethods
       def act_as_railsdav(options = {})
         class_inheritable_accessor :max_propfind_depth
-        class_inheritable_accessor :dav_actions
+        class_inheritable_accessor :dav_methods
         class_inheritable_accessor :dav_versions
         
+        options[:extra_methods]         ||= []
         options[:extra_actions]         ||= []
         options[:extra_dav_versions]    ||= []
         
-        self.dav_actions = ACTIONS + options[:extra_actions]
+        #other methods allow for things like CalDav
+        self.dav_methods = METHODS + options[:extra_methods] + options[:extra_actions]
         self.dav_versions = VERSIONS + options[:extra_dav_versions]
+        
         class_eval do 
           extend Railsdav::PropXMLMethods
         end
         include Railsdav::InstanceMethods
         include Railsdav::WebDavCallbacks
-        hide_action("webdav_lock", "webdav_unlock", "webdav_options", "webdav_propfind", "webdav_proppatch", "webdav_mkcol", "webdav_delete", "webdav_put", "webdav_copy", "webdav_move")
+        hide_action(self.dav_methods.collect {|action| "webdav_#{action}"})
       end
     end
      
@@ -72,11 +74,11 @@ module Railsdav
          if respond_to?("webdav_#{webdav_method}", true)
            __send__("webdav_#{webdav_method}")
          else
-           raise WebDavErrors::UnknownWebDavMethodError
+           #not one of our supported methods
+           raise WebDavErrors::MethodNotAllowedError
          end
          
       rescue WebDavErrors::BaseError => webdav_error
-          logger.info("STATUS : #{webdav_error.http_status}")
           render :nothing => true, :status => webdav_error.http_status and return
       end
         
@@ -85,18 +87,18 @@ module Railsdav
      def webdav_options()
         response.headers['DAV'] = dav_versions.join(",")
         response.headers['MS-Author-Via'] = "DAV"
-        response.headers["Allow"] = dav_actions.map{|o| o.upcase}.join(",")
-        render  :nothing => true, :status => 200 and return
+        response.headers["Allow"] = dav_methods.map{|o| o.upcase}.join(",")
+        render  :nothing => true, :status => :ok and return
      end
      
      def webdav_lock()
         #TODO implementation for now return a 200 OK
-        render :nothing => true, :status => 200 and return
+        render :nothing => true, :status => :ok and return
      end
      
      def webdav_unlock()
         #TODO implementation for now return a 200 OK
-        render :nothing => true, :status => 200 and return
+        render :nothing => true, :status => :ok and return
      end
      
       def webdav_propfind()        
@@ -137,6 +139,8 @@ module Railsdav
           raise WebDavErrors::BadRequestBodyError
         end
         
+        #params["propertyupdate"]["set"].each {|prop| prop["prop"]}
+        
         @remove_properties = []
         @set_properties = []
         
@@ -157,15 +161,14 @@ module Railsdav
   
       def webdav_mkcol()
          # need to check the content-type header to not allow invalid content types
-          mkcol_ct = request.env['HTTP_CONTENT_TYPE']
-  
-          if (!mkcol_ct.blank? && (mkcol_ct != "httpd/unix-directory")) || !request.raw_post.nil?
+          mkcol_ct = request.headers['Content-Type']
+          if (!mkcol_ct.blank? && mkcol_ct != "httpd/unix-directory")
             raise WebDavErrors::UnSupportedTypeError
           end
           
           mkcol_for_path(@path_info)
           
-          render :nothing => true, :status => 201
+          render :nothing => true, :status => :created
       end
   
       def webdav_delete()
@@ -177,14 +180,14 @@ module Railsdav
           raise WebDavErrors::NotFoundError
         end
   
-        render :nothing => true, :status => 204
+        render :nothing => true, :status => :created
       end
   
       def webdav_put()
         
          write_content_to_path(@path_info, request.raw_post)
   
-         render :nothing => true, :status => 201 and return
+         render :nothing => true, :status => :created and return
       end
   
       def webdav_copy()
@@ -256,7 +259,7 @@ module Railsdav
         resource = get_resource_for_path(@path_info)
         raise WebDavErrors::NotFoundError if resource.blank?
         response.headers["Last-Modified"] = resource.getlastmodified
-        render(:nothing => true, :status => 200) and return  
+        render(:nothing => true, :status => :ok) and return  
       end
      
       ##############################################################################################################
@@ -288,7 +291,7 @@ module Railsdav
        ##############################################################################################################
       
            def get_depth
-             depth_head = request.env['HTTP_DEPTH'] 
+             depth_head = request.headers['Depth'] 
              
              #default a big depth if infinity
              if (depth_head.nil?)
@@ -307,24 +310,20 @@ module Railsdav
            end
            
            def get_destination_uri
-             dest = request.env['HTTP_DESTINATION']
-              if /(.*)\/$/ =~ dest
-                 return URI.parse($1)
-               else
-                 return URI.parse(dest)
-               end
+             dest = request.headers['Destination']
+             dest.last == "/" ? URI.parse(dest.to(dest.size-2)) : URI.parse(dest)
            end
            
            def get_dest_path
              if /^#{Regexp.escape(url_for(:only_path => true, :path_info => ""))}/ =~  get_destination_uri.path
-                 return $'
+                 return URI.unescape($')
              else
                  raise WebDavErrors::ForbiddenError
              end
            end
            
            def get_overwrite
-             ov = request.env['HTTP_OVERWRITE']
+             ov = request.headers['Overwrite']
              return (!ov.blank? and ov == 'T')
            end
   
@@ -347,7 +346,7 @@ module Railsdav
            def href_for_path(path)
              unless path.nil?
                new_path = path.clone
-               new_path = new_path[1..-1] if (new_path.first == "/")
+               new_path = new_path.from(1) if (new_path.first == "/")
                url_for(:only_path => true, :path_info => new_path)
              else
                url_for(:only_path => true)
@@ -362,7 +361,7 @@ module Railsdav
                # the user does not exist or the password was wrong
                headers["Status"] = "Unauthorized" 
                headers["WWW-Authenticate"] = "Basic realm=\"#{realm}\"" 
-               render :nothing => true, :status => 401
+               render :nothing => true, :status => :unauthorized
              end 
            end 
            
@@ -385,14 +384,14 @@ module Railsdav
           end
           
           def fix_path_info(req, path)
-            
+            logger.info("CONVERTED: " + Iconv.iconv('UTF-8', 'latin1', URI.unescape(path)).first)
+            Iconv.iconv('UTF-8', 'latin1', URI.unescape(path)).first
             if req.env["HTTP_USER_AGENT"].match(/Microsoft|Windows/)
               logger.info("CONVERTED: " + Iconv.iconv('UTF-8', 'latin1', URI.unescape(path)).first)
               Iconv.iconv('UTF-8', 'latin1', URI.unescape(path)).first
             elsif req.env["HTTP_USER_AGENT"].match(/cadaver/)
               URI.unescape(URI.unescape(path))
             elsif req.env["HTTP_USER_AGENT"].match(/Darwin|Macintosh/)
-              #Unicode::normalize_KC(URI.unescape(path))
               URI.unescape(path)
             else
               URI.unescape(path)

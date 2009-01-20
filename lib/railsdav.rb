@@ -5,6 +5,7 @@ module Railsdav
   VERSION = '0.1.0'
 end
 
+require 'railsdav/methods_patch'
 require 'railsdav/errors'
 require 'railsdav/callbacks'
 require 'railsdav/resource'
